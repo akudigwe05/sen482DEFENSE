@@ -217,7 +217,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftps
           local-dir: ./calculator/
-          server-dir: /
+          server-dir: /public_html/
           exclude: |
             **/.git*
             **/.git*/**

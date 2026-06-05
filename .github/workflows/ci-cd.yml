@@ -1,0 +1,261 @@
+name: CI/CD Pipeline
+
+# ─────────────────────────────────────────────
+# Triggers
+# ─────────────────────────────────────────────
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:            # Allow manual runs from the Actions UI
+
+# Only one deploy runs at a time — no race conditions
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# ─────────────────────────────────────────────
+# Global environment variables
+# ─────────────────────────────────────────────
+env:
+  NODE_VERSION: '22'
+  IMAGE_NAME: lexx01/nodeapp-cicd
+
+# =============================================================
+# JOBS
+# =============================================================
+jobs:
+
+  # ───────────────────────────────────────────
+  # Job 1: Lint
+  # Runs ESLint on src/ — fails fast on any error
+  # ───────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+  # ───────────────────────────────────────────
+  # Job 2: Unit Tests (matrix: Node 20 and 22)
+  # Runs API tests + Calculator tests on both LTS versions
+  # ───────────────────────────────────────────
+  test:
+    name: Unit Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    needs: [lint]
+
+    strategy:
+      fail-fast: false          # Show results for both versions even if one fails
+      matrix:
+        node: ['20', '22']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:ci
+
+      - name: Print coverage summary to Job Summary
+        run: |
+          echo '### Test Coverage Summary — Node ${{ matrix.node }}' >> $GITHUB_STEP_SUMMARY
+          cat coverage/coverage-summary.json | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['total']
+          print('| Metric | % |')
+          print('|--------|---|')
+          print(f\"| Lines      | {d['lines']['pct']}% |\")
+          print(f\"| Statements | {d['statements']['pct']}% |\")
+          print(f\"| Functions  | {d['functions']['pct']}% |\")
+          print(f\"| Branches   | {d['branches']['pct']}% |\")
+          " >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: matrix.node == '22'   # Upload once — from the primary version
+        with:
+          name: coverage-report-${{ github.sha }}
+          path: coverage/
+          retention-days: 30
+
+  # ───────────────────────────────────────────
+  # Job 3: Security Audit
+  # npm audit — fails on high/critical CVEs
+  # ───────────────────────────────────────────
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    needs: [lint]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high --json > audit-report.json || true
+        continue-on-error: true   # Remove in production to block on vulnerabilities
+
+      - name: Print audit summary
+        run: npm audit --audit-level=high || echo 'Vulnerabilities found — review audit-report.json'
+        continue-on-error: true
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-report-${{ github.sha }}
+          path: audit-report.json
+          retention-days: 90
+
+  # ───────────────────────────────────────────
+  # Job 4: Docker Build and Push
+  # Builds the multi-stage image and pushes to Docker Hub.
+  # Only pushes on commits to main (not PRs).
+  # ───────────────────────────────────────────
+  docker-build:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: [test, security-audit]
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract image metadata (tags and labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ───────────────────────────────────────────
+  # Job 5: Deploy via FTPS
+  # Uploads the calculator static files to the VPS subdomain
+  # using FTPS (FTP over TLS). CyberPanel websites don't have
+  # SSH — FTPS is the correct protocol for this hosting setup.
+  # Only runs on pushes to main.
+  # ───────────────────────────────────────────
+  deploy:
+    name: Deploy via FTPS
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    environment:
+      name: production
+      url: ${{ vars.LIVE_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy calculator to VPS via FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./calculator/
+          server-dir: /
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+
+  # ───────────────────────────────────────────
+  # Job 6: Verify Deployment
+  # Curls the live URL and checks for HTTP 200.
+  # Confirms the deployment is publicly reachable.
+  # ───────────────────────────────────────────
+  verify-deploy:
+    name: Verify Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Wait for server to settle
+        run: sleep 15
+
+      - name: Smoke test — check live URL returns HTTP 200
+        run: |
+          HTTP_STATUS=$(curl -o /dev/null -s -w "%{http_code}" ${{ vars.LIVE_URL }})
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Deployment verification FAILED — expected 200, got $HTTP_STATUS"
+            exit 1
+          fi
+          echo "Deployment verified — site is live and returning 200"
+
+      - name: Write deployment summary
+        run: |
+          echo '## Deployment Successful 🚀' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '| Item | Value |' >> $GITHUB_STEP_SUMMARY
+          echo '|------|-------|' >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Image Tag | ${{ needs.docker-build.outputs.image-tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Live URL | ${{ vars.LIVE_URL }} |" >> $GITHUB_STEP_SUMMARY

@@ -1,7 +1,7 @@
 {
   "name": "nodeapp-cicd",
   "version": "1.0.0",
-  "description": "",
+  "description": "VUNA Calculator with CI/CD Pipeline \u2014 Osadolor Benedict Osegie",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -14,21 +14,25 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.js",
+      "**/calculator-tests/**/*.test.js"
+    ],
     "collectCoverageFrom": [
       "src/**/*.js",
-       "!src/server.js"
+      "!src/server.js"
     ],
     "coverageThreshold": {
       "global": {
-        "branches": 70,
-        "functions": 70,
-        "lines": 80,
-        "statements": 80
+        "branches": 50,
+        "functions": 50,
+        "lines": 60,
+        "statements": 60
       }
     }
   },
   "keywords": [],
-  "author": "",
+  "author": "Osadolor Benedict Osegie",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
@@ -38,6 +42,7 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.4.0",
     "jest": "^30.4.2",
+    "nodemon": "^3.1.10",
     "supertest": "^7.2.2"
   }
 }

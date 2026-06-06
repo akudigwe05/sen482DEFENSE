@@ -208,7 +208,7 @@ body {
 
 /* Equals button */
 .btn-equals {
-  background: var(--btn-eq-bg);
+  background: orange;
   color:      var(--btn-eq-fg);
   font-size: 1.6rem;
 }

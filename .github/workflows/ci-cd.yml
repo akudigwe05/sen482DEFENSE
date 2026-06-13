@@ -20,7 +20,7 @@ concurrency:
 # ─────────────────────────────────────────────
 env:
   NODE_VERSION: '22'
-  IMAGE_NAME: lexx01/nodeapp-cicd
+  IMAGE_NAME: kaydee005/sen482DEFENSE
 
 # =============================================================
 # JOBS

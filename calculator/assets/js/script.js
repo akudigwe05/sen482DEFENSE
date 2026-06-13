@@ -75,6 +75,22 @@ function calculateResult() {
   updateResult();
 }
 
+/**
+ * percentage — converts the current expression's evaluated result
+ * into its percentage value (divides by 100).
+ * e.g. "50+10" -> evaluates to 60 -> becomes "0.6"
+ */
+function percentage() {
+  if (!currentExpression) return;
+  var result = calculateExpression(currentExpression);
+  if (result === 'Error') {
+    currentExpression = 'Error';
+  } else {
+    currentExpression = String(parseFloat((result / 100).toFixed(10)));
+  }
+  updateResult();
+}
+
 // ------------------------------------------------------------------
 // Unique Feature: Keyboard Support
 // ------------------------------------------------------------------
@@ -84,7 +100,7 @@ function calculateResult() {
  * Returns an action descriptor object for a given KeyboardEvent.key,
  * or null if the key should be ignored.
  *
- * Return shape: { type: 'append'|'operator'|'clear'|'backspace'|'calculate', value?: string }
+ * Return shape: { type: 'append'|'operator'|'clear'|'backspace'|'calculate'|'percentage', value?: string }
  */
 function mapKeyToAction(key) {
   if (key >= '0' && key <= '9') return { type: 'append', value: key };
@@ -96,6 +112,7 @@ function mapKeyToAction(key) {
   if (key === 'Enter' || key === '=') return { type: 'calculate' };
   if (key === 'Backspace') return { type: 'backspace' };
   if (key === 'Escape' || key === 'Delete') return { type: 'clear' };
+  if (key === '%') return { type: 'percentage' };
   return null;
 }
 
@@ -114,11 +131,12 @@ function handleKeyboardInput(event) {
   highlightKeyboardButton(event.key);
 
   switch (action.type) {
-    case 'append':   appendToResult(action.value);   break;
-    case 'operator': operatorToResult(action.value); break;
-    case 'calculate': calculateResult();             break;
-    case 'backspace': backspace();                   break;
-    case 'clear':     clearResult();                 break;
+    case 'append':     appendToResult(action.value);   break;
+    case 'operator':   operatorToResult(action.value); break;
+    case 'calculate':  calculateResult();              break;
+    case 'backspace':  backspace();                    break;
+    case 'clear':      clearResult();                  break;
+    case 'percentage': percentage();                   break;
   }
 }
 
@@ -132,7 +150,7 @@ function highlightKeyboardButton(key) {
     '5': '5', '6': '6', '7': '7', '8': '8', '9': '9',
     '.': '.', '+': '+', '-': '−', '*': '×', '/': '÷',
     'Enter': '=', '=': '=', 'Backspace': '⌫',
-    'Escape': 'AC', 'Delete': 'AC',
+    'Escape': 'AC', 'Delete': 'AC', '%': '%',
   };
   var label = map[key];
   if (!label) return;
@@ -185,7 +203,7 @@ if (typeof window !== 'undefined') {
     if (hint) {
       hint.classList.add('active');
       document.getElementById('kb-hint-text').textContent =
-        'Keyboard active — type numbers, operators, Enter to calculate, Esc to clear';
+        'Keyboard active — type numbers, operators, Enter to calculate, % for percentage, Esc to clear';
     }
   });
 }
@@ -200,6 +218,7 @@ if (typeof window !== 'undefined') {
   window.clearResult = clearResult;
   window.operatorToResult = operatorToResult;
   window.calculateResult = calculateResult;
+  window.percentage = percentage;
   window.toggleTheme = toggleTheme;
 }
 
@@ -207,5 +226,5 @@ if (typeof window !== 'undefined') {
 // Exports — used by Jest (Node.js has no window/document)
 // ------------------------------------------------------------------
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { calculateExpression, mapKeyToAction };
+  module.exports = { calculateExpression, mapKeyToAction, percentage };
 }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calculator — Osadolor Benedict .0.</title>
+  <title>Calculator — Akudigwe Kingdavid</title>
   <link rel="stylesheet" href="../assets/css/bootstrap.min.css" />
   <link rel="stylesheet" href="../assets/css/calculator.css" />
 </head>
@@ -19,7 +19,7 @@
         <!-- Header -->
         <div class="calc-header">
           <h4 class="calc-title">VUNA CALCULATOR</h4>
-          <p class="calc-subtitle">Osadolor Benedict .O.</p>
+          <p class="calc-subtitle">Akudigwe Kingdavid</p>
         </div>
 
         <!-- Keyboard hint badge -->
@@ -38,7 +38,7 @@
             <div class="btn-grid">
 
               <!-- Row 1: AC  ←  (blank)  ÷ -->
-              <button class="btn btn-action" onclick="clearResult()">ClearAwayMrB</button>
+              <button class="btn btn-action" onclick="clearResult()">AC</button>
               <button class="btn btn-action" onclick="backspace()">⌫</button>
               <button class="btn btn-operator" onclick="operatorToResult('/')">÷</button>
               <button class="btn btn-operator" onclick="operatorToResult('*')">×</button>
@@ -64,6 +64,9 @@
               <!-- Row 5: 0 (spans 2)  . -->
               <button class="btn btn-number col-span-2" onclick="appendToResult(0)">0</button>
               <button class="btn btn-number" onclick="appendToResult('.')">.</button>
+
+              <!-- Row 6: % button (spans 2) -->
+              <button class="btn btn-operator col-span-2" onclick="percentage()">%</button>
 
             </div><!-- /btn-grid -->
           </div>
